@@ -117,25 +117,79 @@ class VoiceModeration(commands.Cog):
         return choices[:25]
 
     async def _dcbulk_users_autocomplete(self, interaction: discord.Interaction, current: str) -> typing.List[app_commands.Choice]:
-        # autocomplete for bulk user field: append mention tokens so UI can build comma-separated mentions
+        # autocomplete untuk user1, user2, user3, dst
+        # exclude users yang sudah ditambahkan di parameter sebelumnya
         guild = interaction.guild
         if not guild:
             return []
-        current = current or ""
-        parts = [p.strip() for p in current.split(",")]
-        prefix = ", ".join(parts[:-1]).strip()
-        last = parts[-1].strip()
+        invoker = interaction.user
+        
+        # parse users dari parameter sebelumnya
+        selected_ids = []
+        data = getattr(interaction, "data", None)
+        if data:
+            opts = data.get("options") or []
+            for o in opts:
+                name = o.get("name")
+                # user1, user2, user3, ... parameter
+                if name and name.startswith("user"):
+                    val = o.get("value")
+                    if val:
+                        ids = self._parse_user_ids_from_string(val)
+                        selected_ids.extend(ids)
+        
         choices: list[app_commands.Choice] = []
         for m in guild.members:
             if not (m.voice and m.voice.channel):
                 continue
-            label = self._member_label(m)
-            if last and last.lower() not in label.lower():
+            # Only show members in channels accessible by invoker
+            if not self._can_connect(m.voice.channel, invoker):
                 continue
-            # value becomes full comma-separated mention string with trailing comma+space for easy next selection
-            new_value = (prefix + ", " + f"<@{m.id}>").lstrip(", ").strip()
-            new_value = new_value + ", "
-            choices.append(app_commands.Choice(name=label, value=new_value))
+            # Exclude already selected users
+            if m.id in selected_ids:
+                continue
+            label = self._member_label(m)
+            if current and current.lower() not in label.lower():
+                continue
+            choices.append(app_commands.Choice(name=label, value=f"<@{m.id}>"))
+        return choices[:25]
+
+    async def _movebulk_users_autocomplete(self, interaction: discord.Interaction, current: str) -> typing.List[app_commands.Choice]:
+        # autocomplete untuk user1, user2, user3, dst
+        # exclude users yang sudah ditambahkan di parameter sebelumnya
+        guild = interaction.guild
+        if not guild:
+            return []
+        invoker = interaction.user
+        
+        # parse users dari parameter sebelumnya
+        selected_ids = []
+        data = getattr(interaction, "data", None)
+        if data:
+            opts = data.get("options") or []
+            for o in opts:
+                name = o.get("name")
+                # user1, user2, user3, ... parameter
+                if name and name.startswith("user"):
+                    val = o.get("value")
+                    if val:
+                        ids = self._parse_user_ids_from_string(val)
+                        selected_ids.extend(ids)
+        
+        choices: list[app_commands.Choice] = []
+        for m in guild.members:
+            if not (m.voice and m.voice.channel):
+                continue
+            # Only show members in channels accessible by invoker
+            if not self._can_connect(m.voice.channel, invoker):
+                continue
+            # Exclude already selected users
+            if m.id in selected_ids:
+                continue
+            label = self._member_label(m)
+            if current and current.lower() not in label.lower():
+                continue
+            choices.append(app_commands.Choice(name=label, value=f"<@{m.id}>"))
         return choices[:25]
 
     async def _voice_channel_source_autocomplete(self, interaction: discord.Interaction, current: str) -> typing.List[app_commands.Choice]:
@@ -152,14 +206,15 @@ class VoiceModeration(commands.Cog):
         return choices[:25]
 
     async def _voice_channel_destination_for_target_autocomplete(self, interaction: discord.Interaction, current: str) -> typing.List[app_commands.Choice]:
-        # destination options for /move: show channels accessible by selected target member (not invoker)
+        # destination: accessible by target member AND invoker
+        # REFRESH setiap user berubah
         guild = interaction.guild
         if not guild:
             return []
+        invoker = interaction.user
         user_val = self._find_option_value(interaction, "user")
         if not user_val:
             return []
-        # user_val might be mention like "<@id>" or id
         target_ids = self._parse_user_ids_from_string(user_val)
         if not target_ids:
             return []
@@ -171,8 +226,10 @@ class VoiceModeration(commands.Cog):
             # exclude target's current channel
             if target_member.voice and target_member.voice.channel and ch.id == target_member.voice.channel.id:
                 continue
-            # require destination accessible by target_member
+            # require destination accessible by both target_member AND invoker
             if not self._can_connect(ch, target_member):
+                continue
+            if not self._can_connect(ch, invoker):
                 continue
             label = f"{ch.name} ({len(ch.members)} users)" if len(ch.members) > 0 else f"{ch.name} (empty)"
             if not current or current.lower() in label.lower():
@@ -252,11 +309,36 @@ class VoiceModeration(commands.Cog):
         await self.log_action(interaction, "Voice Disconnect", f"Target: {member} ({member.id})\nBy: {interaction.user}\nReason: {reason or '—'}", color=discord.Color.red())
 
     @app_commands.command(name="dcbulk", description="Disconnect beberapa anggota")
-    @app_commands.describe(user_mentions="Pilih beberapa user (autocomplete bantu buat mentions, pisah dengan koma)", reason="Alasan")
-    @app_commands.autocomplete(user_mentions=_dcbulk_users_autocomplete)
-    async def dcbulk(self, interaction: discord.Interaction, user_mentions: str, reason: typing.Optional[str] = None):
+    @app_commands.describe(
+        user1="Pilih user pertama (hanya yang sedang terhubung)",
+        user2="Pilih user kedua (opsional)",
+        user3="Pilih user ketiga (opsional)",
+        user4="Pilih user keempat (opsional)",
+        user5="Pilih user kelima (opsional)",
+        reason="Alasan"
+    )
+    @app_commands.autocomplete(user1=_dcbulk_users_autocomplete)
+    @app_commands.autocomplete(user2=_dcbulk_users_autocomplete)
+    @app_commands.autocomplete(user3=_dcbulk_users_autocomplete)
+    @app_commands.autocomplete(user4=_dcbulk_users_autocomplete)
+    @app_commands.autocomplete(user5=_dcbulk_users_autocomplete)
+    async def dcbulk(
+        self, 
+        interaction: discord.Interaction, 
+        user1: str,
+        user2: typing.Optional[str] = None,
+        user3: typing.Optional[str] = None,
+        user4: typing.Optional[str] = None,
+        user5: typing.Optional[str] = None,
+        reason: typing.Optional[str] = None
+    ):
         await interaction.response.defer(thinking=True)
-        ids = self._parse_user_ids_from_string(user_mentions)
+        
+        # Combine all user parameters
+        all_users = [u for u in [user1, user2, user3, user4, user5] if u]
+        combined = ", ".join(all_users)
+        
+        ids = self._parse_user_ids_from_string(combined)
         results = []
         for uid in ids:
             member = interaction.guild.get_member(uid)
@@ -272,7 +354,7 @@ class VoiceModeration(commands.Cog):
             except Exception as e:
                 results.append(f"{member} -> error: {e}")
         await interaction.followup.send("Results:\n" + "\n".join(results), ephemeral=False)
-        await self.log_action(interaction, "Voice Bulk Disconnect", f"Requested: {user_mentions}\nResults:\n" + "\n".join(results) + f"\nBy: {interaction.user}\nReason: {reason or '—'}", color=discord.Color.red())
+        await self.log_action(interaction, "Voice Bulk Disconnect", f"Users: {combined}\nResults:\n" + "\n".join(results) + f"\nBy: {interaction.user}\nReason: {reason or '—'}", color=discord.Color.red())
 
     @app_commands.command(name="dcchannel", description="Disconnect semua anggota dari voice channel yang dipilih")
     @app_commands.describe(channel="Pilih source voice channel (hanya channel dengan user)", reason="Alasan")
@@ -318,12 +400,39 @@ class VoiceModeration(commands.Cog):
         await self.log_action(interaction, "Voice Move", f"Target: {member} -> {dest.name}\nBy: {interaction.user}\nReason: {reason or '—'}", color=discord.Color.blue())
 
     @app_commands.command(name="movebulk", description="Pindahkan beberapa anggota")
-    @app_commands.describe(user_mentions="Pilih beberapa user (autocomplete bantu buat mentions, pisah dengan koma)", destination="Destination voice channel (accessible by all selected users)", reason="Alasan")
-    @app_commands.autocomplete(user_mentions=_dcbulk_users_autocomplete)
-    @app_commands.autocomplete(destination=_voice_channel_destination_for_bulk_autocomplete)
-    async def movebulk(self, interaction: discord.Interaction, user_mentions: str, destination: str, reason: typing.Optional[str] = None):
+    @app_commands.describe(
+        user1="Pilih user pertama (hanya yang sedang terhubung)",
+        user2="Pilih user kedua (opsional)",
+        user3="Pilih user ketiga (opsional)",
+        user4="Pilih user keempat (opsional)",
+        user5="Pilih user kelima (opsional)",
+        destination="Destination voice channel (accessible by all selected users)",
+        reason="Alasan"
+    )
+    @app_commands.autocomplete(user1=_movebulk_users_autocomplete)
+    @app_commands.autocomplete(user2=_movebulk_users_autocomplete)
+    @app_commands.autocomplete(user3=_movebulk_users_autocomplete)
+    @app_commands.autocomplete(user4=_movebulk_users_autocomplete)
+    @app_commands.autocomplete(user5=_movebulk_users_autocomplete)
+    # @app_commands.autocomplete(destination=_movebulk_destination_autocomplete)
+    async def movebulk(
+        self, 
+        interaction: discord.Interaction, 
+        user1: str,
+        user2: typing.Optional[str] = None,
+        user3: typing.Optional[str] = None,
+        user4: typing.Optional[str] = None,
+        user5: typing.Optional[str] = None,
+        destination: str = None,
+        reason: typing.Optional[str] = None
+    ):
         await interaction.response.defer(thinking=True)
-        ids = self._parse_user_ids_from_string(user_mentions)
+        
+        # Combine all user parameters
+        all_users = [u for u in [user1, user2, user3, user4, user5] if u]
+        combined = ", ".join(all_users)
+        
+        ids = self._parse_user_ids_from_string(combined)
         members = [interaction.guild.get_member(i) for i in ids if interaction.guild.get_member(i)]
         if not members:
             await interaction.followup.send("Tidak ada member yang valid.", ephemeral=False)
@@ -334,7 +443,7 @@ class VoiceModeration(commands.Cog):
             return
         # ensure destination accessible by all selected members
         for m in members:
-            if not dest.permissions_for(m).view_channel or not dest.permissions_for(m).connect:
+            if not self._can_connect(dest, m):
                 await interaction.followup.send("Destination tidak dapat diakses oleh salah satu member yang dipilih.", ephemeral=False)
                 return
         results = []
@@ -345,7 +454,7 @@ class VoiceModeration(commands.Cog):
             except Exception as e:
                 results.append(f"{m} -> error: {e}")
         await interaction.followup.send("Results:\n" + "\n".join(results), ephemeral=False)
-        await self.log_action(interaction, "Voice Bulk Move", f"Requested: {user_mentions}\nDestination: {dest.name}\nResults:\n" + "\n".join(results) + f"\nBy: {interaction.user}\nReason: {reason or '—'}", color=discord.Color.blue())
+        await self.log_action(interaction, "Voice Bulk Move", f"Users: {combined}\nDestination: {dest.name}\nResults:\n" + "\n".join(results) + f"\nBy: {interaction.user}\nReason: {reason or '—'}", color=discord.Color.blue())
 
     @app_commands.command(name="movechannel", description="Pindahkan semua anggota dari source ke destination")
     @app_commands.describe(source="Source voice channel (hanya channel dengan user)", destination="Destination voice channel (user dapat akses oleh semua member source)", reason="Alasan")
@@ -362,7 +471,7 @@ class VoiceModeration(commands.Cog):
             return
         # ensure destination accessible by all members in source
         for m in src.members:
-            if not dest.permissions_for(m).view_channel or not dest.permissions_for(m).connect:
+            if not self._can_connect(dest, m):
                 await interaction.response.send_message("Destination tidak dapat diakses oleh semua member di source.", ephemeral=False)
                 return
         await interaction.response.defer(thinking=True)
