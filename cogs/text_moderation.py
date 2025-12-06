@@ -74,7 +74,6 @@ class TextModeration(commands.Cog):
             await interaction.followup.send(f"Gagal menghapus pesan: {e}", ephemeral=True)
 
     @commands.command(name="delete", aliases=["del"])
-    @commands.has_permissions(manage_messages=True)
     async def delete_cmd(self, ctx: commands.Context, *, reason: str = None):
         """Reply ke pesan yang ingin dihapus lalu jalankan: !delete [alasan]"""
         ref = ctx.message.reference
