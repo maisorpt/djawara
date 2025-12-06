@@ -194,51 +194,37 @@ class VoiceModeration(commands.Cog):
                 continue
             choices.append(app_commands.Choice(name=label, value=f"<@{m.id}>"))
         return choices[:25]
-
-    async def _movebulk_users_autocomplete(self, interaction: discord.Interaction, current: str) -> typing.List[app_commands.Choice]:
-        # autocomplete for bulk user field: show only users accessible by invoker, exclude already selected
-        guild = interaction.guild
-        if not guild:
-            return []
-        invoker = interaction.user
-        current = current or ""
-        parts = [p.strip() for p in current.split(",")]
-        prefix = ", ".join(parts[:-1]).strip()
-        last = parts[-1].strip()
-        
-        # parse already selected user ids
-        selected_ids = self._parse_user_ids_from_string(prefix)
-        
-        choices: list[app_commands.Choice] = []
-        for m in guild.members:
-            if not (m.voice and m.voice.channel):
-                continue
-            # Only show members in channels accessible by invoker
-            if not self._can_connect(m.voice.channel, invoker):
-                continue
-            # Exclude already selected users
-            if m.id in selected_ids:
-                continue
-            label = self._member_label(m)
-            if last and last.lower() not in label.lower():
-                continue
-            # value becomes full comma-separated mention string with trailing comma+space
-            new_value = (prefix + ", " + f"<@{m.id}>").lstrip(", ").strip()
-            new_value = new_value + ", "
-            choices.append(app_commands.Choice(name=label, value=new_value))
-        return choices[:25]
     
     async def _voice_channel_source_autocomplete(self, interaction: discord.Interaction, current: str) -> typing.List[app_commands.Choice]:
         guild = interaction.guild
+        # Keluar jika interaksi tidak terjadi di guild
         if not guild:
             return []
+
+        # Dapatkan anggota yang memanggil perintah (invoker)
+        invoker = interaction.user 
+        
         choices = []
+        
+        # 1. Perulangan melalui semua voice channels
         for ch in guild.voice_channels:
+            
+            # 2. Periksa apakah invoker memiliki izin untuk melihat (VIEW_CHANNEL) VC ini
+            #    dan terhubung (CONNECT) ke VC ini.
+            permissions = ch.permissions_for(invoker)
+            if not permissions.view_channel or not permissions.connect:
+                continue  # Abaikan jika invoker tidak dapat melihat atau terhubung
+
+            # 3. Periksa apakah VC memiliki user (Seperti yang sudah ada di kode Anda)
             if len(ch.members) == 0:
                 continue
+                
+            # Jika semua pemeriksaan lolos:
             label = f"{ch.name} ({len(ch.members)} user)"
+            
             if not current or current.lower() in label.lower():
                 choices.append(app_commands.Choice(name=label, value=str(ch.id)))
+                
         return choices[:25]
 
     async def _voice_channel_destination_for_target_autocomplete(self, interaction: discord.Interaction, current: str) -> typing.List[app_commands.Choice]:
@@ -262,10 +248,7 @@ class VoiceModeration(commands.Cog):
             if target_member.voice and target_member.voice.channel and ch.id == target_member.voice.channel.id:
                 continue
             # require destination accessible by both target_member AND invoker
-            # require destination accessible by both target_member AND invoker
             if not self._can_connect(ch, target_member):
-                continue
-            if not self._can_connect(ch, invoker):
                 continue
             if not self._can_connect(ch, invoker):
                 continue
@@ -280,28 +263,60 @@ class VoiceModeration(commands.Cog):
         if not guild:
             return []
         invoker = interaction.user
-        users_val = self._find_option_value(interaction, "user_mentions")
-        if not users_val:
-            return []
-        ids = self._parse_user_ids_from_string(users_val)
-        members = [guild.get_member(i) for i in ids if guild.get_member(i)]
-        if not members:
-            return []
+        
+        # --- PERBAIKAN DI SINI (Identifikasi User) ---
+        all_user_values = []
+        for i in range(1, 6): # user1 hingga user5
+            user_val = getattr(interaction.namespace, f'user{i}', None)
+            if user_val:
+                all_user_values.append(user_val)
+        
+        combined_user_mentions = ", ".join(all_user_values)
+        ids = self._parse_user_ids_from_string(combined_user_mentions)
+        # --- AKHIR PERBAIKAN (Identifikasi User) ---
+        
+        # 1. TEMUKAN VC ASAL DAN SIMPAN DALAM SET
+        source_vcs = set()
+        
+        if not ids:
+            # Jika belum ada user yang dipilih, hanya tampilkan VC yang dapat diakses invoker
+            members = []
+        else:
+            members = [guild.get_member(i) for i in ids if guild.get_member(i)]
+            if not members:
+                return []
+            
+            # Tambahkan ID VC asal dari setiap member ke set source_vcs
+            for m in members:
+                if m.voice and m.voice.channel:
+                    source_vcs.add(m.voice.channel.id)
+        
         choices = []
         for ch in guild.voice_channels:
+            
+            # 2. LOGIKA EKSKLUSI: Lewati VC asal yang sudah teridentifikasi
+            if ch.id in source_vcs:
+                continue
+            
+            # Check for permissions for all selected members
             ok = True
             for m in members:
+                # Menggunakan _can_connect
                 if not self._can_connect(ch, m):
                     ok = False
                     break
+            
             # Also check invoker can access
             if not self._can_connect(ch, invoker):
                 ok = False
+                
             if not ok:
                 continue
+            
             label = f"{ch.name} ({len(ch.members)} users)" if len(ch.members) > 0 else f"{ch.name} (empty)"
             if not current or current.lower() in label.lower():
                 choices.append(app_commands.Choice(name=label, value=str(ch.id)))
+                
         return choices[:25]
 
     async def _voice_channel_destination_for_source_autocomplete(self, interaction: discord.Interaction, current: str) -> typing.List[app_commands.Choice]:
@@ -460,7 +475,7 @@ class VoiceModeration(commands.Cog):
     @app_commands.autocomplete(user3=_movebulk_users_autocomplete)
     @app_commands.autocomplete(user4=_movebulk_users_autocomplete)
     @app_commands.autocomplete(user5=_movebulk_users_autocomplete)
-    # @app_commands.autocomplete(destination=_movebulk_destination_autocomplete)
+    @app_commands.autocomplete(destination=_voice_channel_destination_for_bulk_autocomplete)
     async def movebulk(
         self, 
         interaction: discord.Interaction, 
