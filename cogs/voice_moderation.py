@@ -95,10 +95,14 @@ class VoiceModeration(commands.Cog):
         guild = interaction.guild
         if not guild:
             return []
+        invoker = interaction.user
         cmd = interaction.data.get("name") if getattr(interaction, "data", None) else None
         choices: list[app_commands.Choice] = []
         for m in guild.members:
             if not (m.voice and m.voice.channel):
+                continue
+            # Only show members in channels accessible by invoker
+            if not self._can_connect(m.voice.channel, invoker):
                 continue
             # filter by command state
             if cmd == "mute" and getattr(m.voice, "mute", False):
@@ -111,7 +115,6 @@ class VoiceModeration(commands.Cog):
                 continue
             label = self._member_label(m)
             if not current or current.lower() in label.lower():
-                # value: mention string (easy to paste into bulk string)
                 value = f"<@{m.id}>"
                 choices.append(app_commands.Choice(name=label, value=value))
         return choices[:25]
@@ -138,6 +141,39 @@ class VoiceModeration(commands.Cog):
             choices.append(app_commands.Choice(name=label, value=new_value))
         return choices[:25]
 
+    async def _movebulk_users_autocomplete(self, interaction: discord.Interaction, current: str) -> typing.List[app_commands.Choice]:
+        # autocomplete for bulk user field: show only users accessible by invoker, exclude already selected
+        guild = interaction.guild
+        if not guild:
+            return []
+        invoker = interaction.user
+        current = current or ""
+        parts = [p.strip() for p in current.split(",")]
+        prefix = ", ".join(parts[:-1]).strip()
+        last = parts[-1].strip()
+        
+        # parse already selected user ids
+        selected_ids = self._parse_user_ids_from_string(prefix)
+        
+        choices: list[app_commands.Choice] = []
+        for m in guild.members:
+            if not (m.voice and m.voice.channel):
+                continue
+            # Only show members in channels accessible by invoker
+            if not self._can_connect(m.voice.channel, invoker):
+                continue
+            # Exclude already selected users
+            if m.id in selected_ids:
+                continue
+            label = self._member_label(m)
+            if last and last.lower() not in label.lower():
+                continue
+            # value becomes full comma-separated mention string with trailing comma+space
+            new_value = (prefix + ", " + f"<@{m.id}>").lstrip(", ").strip()
+            new_value = new_value + ", "
+            choices.append(app_commands.Choice(name=label, value=new_value))
+        return choices[:25]
+    
     async def _voice_channel_source_autocomplete(self, interaction: discord.Interaction, current: str) -> typing.List[app_commands.Choice]:
         guild = interaction.guild
         if not guild:
@@ -152,14 +188,14 @@ class VoiceModeration(commands.Cog):
         return choices[:25]
 
     async def _voice_channel_destination_for_target_autocomplete(self, interaction: discord.Interaction, current: str) -> typing.List[app_commands.Choice]:
-        # destination options for /move: show channels accessible by selected target member (not invoker)
+        # destination: accessible by target member AND invoker
         guild = interaction.guild
         if not guild:
             return []
+        invoker = interaction.user
         user_val = self._find_option_value(interaction, "user")
         if not user_val:
             return []
-        # user_val might be mention like "<@id>" or id
         target_ids = self._parse_user_ids_from_string(user_val)
         if not target_ids:
             return []
@@ -171,8 +207,10 @@ class VoiceModeration(commands.Cog):
             # exclude target's current channel
             if target_member.voice and target_member.voice.channel and ch.id == target_member.voice.channel.id:
                 continue
-            # require destination accessible by target_member
+            # require destination accessible by both target_member AND invoker
             if not self._can_connect(ch, target_member):
+                continue
+            if not self._can_connect(ch, invoker):
                 continue
             label = f"{ch.name} ({len(ch.members)} users)" if len(ch.members) > 0 else f"{ch.name} (empty)"
             if not current or current.lower() in label.lower():
@@ -180,10 +218,11 @@ class VoiceModeration(commands.Cog):
         return choices[:25]
 
     async def _voice_channel_destination_for_bulk_autocomplete(self, interaction: discord.Interaction, current: str) -> typing.List[app_commands.Choice]:
-        # destination for movebulk: only channels accessible by ALL selected members
+        # destination for movebulk: channels accessible by ALL selected members AND invoker
         guild = interaction.guild
         if not guild:
             return []
+        invoker = interaction.user
         users_val = self._find_option_value(interaction, "user_mentions")
         if not users_val:
             return []
@@ -198,6 +237,9 @@ class VoiceModeration(commands.Cog):
                 if not self._can_connect(ch, m):
                     ok = False
                     break
+            # Also check invoker can access
+            if not self._can_connect(ch, invoker):
+                ok = False
             if not ok:
                 continue
             label = f"{ch.name} ({len(ch.members)} users)" if len(ch.members) > 0 else f"{ch.name} (empty)"
@@ -206,10 +248,11 @@ class VoiceModeration(commands.Cog):
         return choices[:25]
 
     async def _voice_channel_destination_for_source_autocomplete(self, interaction: discord.Interaction, current: str) -> typing.List[app_commands.Choice]:
-        # destination options for movechannel: destination must be accessible by all members in source
+        # destination options for movechannel: accessible by all members in source AND invoker
         guild = interaction.guild
         if not guild:
             return []
+        invoker = interaction.user
         source_val = self._find_option_value(interaction, "source")
         if not source_val:
             return []
@@ -227,6 +270,9 @@ class VoiceModeration(commands.Cog):
                 if not ch.permissions_for(m).view_channel or not ch.permissions_for(m).connect:
                     ok = False
                     break
+            # Also check invoker can access
+            if not self._can_connect(ch, invoker):
+                ok = False
             if not ok:
                 continue
             label = f"{ch.name} ({len(ch.members)} users)" if len(ch.members) > 0 else f"{ch.name} (empty)"
@@ -319,7 +365,7 @@ class VoiceModeration(commands.Cog):
 
     @app_commands.command(name="movebulk", description="Pindahkan beberapa anggota")
     @app_commands.describe(user_mentions="Pilih beberapa user (autocomplete bantu buat mentions, pisah dengan koma)", destination="Destination voice channel (accessible by all selected users)", reason="Alasan")
-    @app_commands.autocomplete(user_mentions=_dcbulk_users_autocomplete)
+    @app_commands.autocomplete(user_mentions=_movebulk_users_autocomplete)
     @app_commands.autocomplete(destination=_voice_channel_destination_for_bulk_autocomplete)
     async def movebulk(self, interaction: discord.Interaction, user_mentions: str, destination: str, reason: typing.Optional[str] = None):
         await interaction.response.defer(thinking=True)
