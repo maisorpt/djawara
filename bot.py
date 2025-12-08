@@ -50,8 +50,9 @@ async def on_ready():
 
 async def main():
     async with bot:
-        await bot.add_cog(HelpCog(bot))
+        
         await load_cogs()
+        await bot.add_cog(HelpCog(bot))
         await bot.start(TOKEN)
 
 if __name__ == "__main__":

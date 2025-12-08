@@ -353,25 +353,350 @@ class VoiceModeration(commands.Cog):
         return choices[:25]
 
     # ---------- Commands (responses visible to all) ----------
-    @app_commands.command(name="dc", description="Disconnect satu anggota dari voice")
-    @app_commands.describe(user="Pilih user (hanya yang sedang terhubung)", reason="Alasan")
+    @app_commands.command(name="mute", description="Mute user")
+    @app_commands.describe(user="Pilih user", reason="Alasan")
+    @app_commands.autocomplete(user=_voice_member_autocomplete)
+    async def mute(self, interaction: discord.Interaction, user: str, reason: typing.Optional[str] = None):
+        ids = self._parse_user_ids_from_string(user)
+        if not ids:
+            await interaction.response.send_message("User tidak dapat di-mute.", ephemeral=True)
+            return
+        member = interaction.guild.get_member(ids[0])
+        if not member or not member.voice or not member.voice.channel or getattr(member.voice, "mute", False):
+            await interaction.response.send_message("User tidak dapat di-mute.", ephemeral=True)
+            return
+        await member.edit(mute=True, reason=reason)
+        await interaction.response.send_message(f"✅ Berhasil mute {member.mention}.", ephemeral=True)
+        embed = discord.Embed(
+                title="🔇 SERVER MUTE",
+                description=f"**{member.mention}** telah dibisukan di Voice.",
+                color=discord.Color.red()
+                 )
+        if reason:
+                embed.add_field(name="Oleh", value=interaction.user.mention, inline=True)
+                embed.add_field(name="Alasan", value=reason, inline=True)
+        else:
+                embed.add_field(name="\u200b", value=f"**Oleh:** {interaction.user.mention}",inline=True)
+
+        await interaction.channel.send(embed=embed)
+        await self.log_action(interaction, "Server Mute", f"Target: {member}\nBy: {interaction.user}\nReason: {reason or '—'}", color=discord.Color.orange())
+
+    @app_commands.command(name="unmute", description="Unmute user")
+    @app_commands.describe(user="Pilih user", reason="Alasan")
+    @app_commands.autocomplete(user=_voice_member_autocomplete)
+    async def unmute(self, interaction: discord.Interaction, user: str, reason: typing.Optional[str] = None):
+        ids = self._parse_user_ids_from_string(user)
+        if not ids:
+            await interaction.response.send_message("User tidak dapat di-unmute.", ephemeral=False)
+            return
+        member = interaction.guild.get_member(ids[0])
+        if not member or not member.voice or not member.voice.channel or not getattr(member.voice, "mute", False):
+            await interaction.response.send_message("User tidak dapat di-unmute.", ephemeral=False)
+            return
+        await member.edit(mute=False, reason=reason)
+        await interaction.response.send_message(f"🔊 Berhasil unmute {member.mention}.", ephemeral=True)
+        embed = discord.Embed(
+                title="🔊 SERVER UNMUTE",
+                description=f"**{member.mention}** mic telah diaktifkan.",
+                color=discord.Color.green()
+            )
+        if reason:
+            embed.add_field(name="Oleh", value=interaction.user.mention, inline=True)
+            embed.add_field(name="Alasan", value=reason, inline=True)
+        else:
+            embed.add_field(name="\u200b", value=f"**Oleh:** {interaction.user.mention}",inline=True)
+
+        await interaction.channel.send(embed=embed)
+        await self.log_action(interaction, "Server Unmute", f"Target: {member} ({member.id})\nBy: {interaction.user}\nReason: {reason or '—'}", color=discord.Color.green())
+
+    @app_commands.command(name="deafen", description="Deafen user")
+    @app_commands.describe(user="Pilih user", reason="Alasan")
+    @app_commands.autocomplete(user=_voice_member_autocomplete)
+    async def deafen(self, interaction: discord.Interaction, user: str, reason: typing.Optional[str] = None):
+        ids = self._parse_user_ids_from_string(user)
+        if not ids:
+            await interaction.response.send_message("User tidak dapat di-deafen.", ephemeral=False)
+            return
+        member = interaction.guild.get_member(ids[0])
+        if not member or not member.voice or not member.voice.channel or getattr(member.voice, "deaf", False):
+            await interaction.response.send_message("User tidak dapat di-deafen.", ephemeral=False)
+            return
+        await member.edit(deafen=True, reason=reason)
+        await interaction.response.send_message(f"🔕 Berhasil deafen {member.mention}.", ephemeral=True)
+        embed = discord.Embed(
+                title="🔕 SERVER DEAFEN",
+                description=f"**{member.mention}** telah di-deafen.",
+                color=discord.Color.red()
+            )
+        if reason:
+            embed.add_field(name="Oleh", value=interaction.user.mention, inline=True)
+            embed.add_field(name="Alasan", value=reason, inline=True)
+        else:
+            embed.add_field(name="\u200b", value=f"**Oleh:** {interaction.user.mention}",inline=True)
+
+        await interaction.channel.send(embed=embed)
+        await self.log_action(interaction, "Server Deafen", f"Target: {member} ({member.id})\nBy: {interaction.user}\nReason: {reason or '—'}", color=discord.Color.orange())
+
+    @app_commands.command(name="undeafen", description="Undeafen user")
+    @app_commands.describe(user="Pilih user", reason="Alasan")
+    @app_commands.autocomplete(user=_voice_member_autocomplete)
+    async def undeafen(self, interaction: discord.Interaction, user: str, reason: typing.Optional[str] = None):
+        ids = self._parse_user_ids_from_string(user)
+        if not ids:
+            await interaction.response.send_message("User tidak dapat di-undeafen.", ephemeral=False)
+            return
+        member = interaction.guild.get_member(ids[0])
+        if not member or not member.voice or not member.voice.channel or not getattr(member.voice, "deaf", False):
+            await interaction.response.send_message("Member tidak dapat di-undeafen.", ephemeral=False)
+            return
+        await member.edit(deafen=False, reason=reason)
+        await interaction.response.send_message(f"🔔 Berhasil undeafen {member.mention}.", ephemeral=True)
+        embed = discord.Embed(
+                title="🔔 SERVER UNDEAFEN",
+                description=f"**{member.mention}** telah di-undeafen.",
+                color=discord.Color.green()
+            )
+        if reason:
+            embed.add_field(name="Oleh", value=interaction.user.mention, inline=True)
+            embed.add_field(name="Alasan", value=reason, inline=True)
+        else:
+            embed.add_field(name="\u200b", value=f"**Oleh:** {interaction.user.mention}",inline=True)
+
+        await interaction.channel.send(embed=embed)
+        await self.log_action(interaction, "Server Undeafen", f"Target: {member} ({member.id})\nBy: {interaction.user}\nReason: {reason or '—'}", color=discord.Color.green())
+    @app_commands.command(name="move", description="Pindahkan satu user ke channel lain")
+    @app_commands.describe(user="Pilih user", destination="Pilih channel tujuan", reason="Alasan")
+    @app_commands.autocomplete(user=_voice_member_autocomplete)
+    @app_commands.autocomplete(destination=_voice_channel_destination_for_target_autocomplete)
+    async def move(self, interaction: discord.Interaction, user: str, destination: str, reason: typing.Optional[str] = None):
+        ids = self._parse_user_ids_from_string(user)
+        if not ids:
+            await interaction.response.send_message("User tidak valid.", ephemeral=True)
+            return
+        member = interaction.guild.get_member(ids[0])
+        dest = interaction.guild.get_channel(int(destination))
+        if not member or not member.voice or not member.voice.channel:
+            await interaction.response.send_message("User tidak ditemukan atau tidak sedang di voice.", ephemeral=True)
+            return
+        original_channel = member.voice.channel
+        if not isinstance(dest, discord.VoiceChannel) or not self._can_connect(dest, member):
+            await interaction.response.send_message("Channel tujuan tidak valid atau tidak dapat diakses oleh member.", ephemeral=True)
+            return
+        if member.voice.channel.id == dest.id:
+            await interaction.response.send_message("Member sudah berada di channel tujuan.", ephemeral=True)
+            return
+        
+        await member.move_to(dest, reason=reason)
+        await interaction.response.send_message(f"✅ Berhasil memindahkan {member.mention} dari 🔊 {original_channel.name} ke 🔊 {dest.name}.", ephemeral=True)
+        embed = discord.Embed(
+            title="🚚 VOICE MOVE",
+            description=f"**{member.mention}** telah dipindahkan dari **<#{original_channel.id}>** ke **<#{dest.id}>**.",
+            color=discord.Color.blue()
+        )
+        if reason:
+            embed.add_field(name="Oleh", value=interaction.user.mention, inline=True)
+            embed.add_field(name="Alasan", value=reason, inline=True)
+        else:
+            embed.add_field(name="\u200b", value=f"**Oleh:** {interaction.user.mention}",inline=True)
+
+        await interaction.channel.send(embed=embed)
+        await self.log_action(interaction, "Voice Move", f"Target: {member}\n{original_channel.name} -> {dest.name}\nBy: {interaction.user}\nReason: {reason or '—'}", color=discord.Color.blue())
+
+    @app_commands.command(name="movebulk", description="Pindahkan beberapa user sekaligus ke channel lain")
+    @app_commands.describe(
+        user1="Pilih user pertama",
+        destination="Pilih channel tujuan",
+        user2="Pilih user kedua (opsional)",
+        user3="Pilih user ketiga (opsional)",
+        user4="Pilih user keempat (opsional)",
+        user5="Pilih user kelima (opsional)",
+        reason="Alasan"
+    )
+    @app_commands.autocomplete(user1=_movebulk_users_autocomplete)
+    @app_commands.autocomplete(user2=_movebulk_users_autocomplete)
+    @app_commands.autocomplete(user3=_movebulk_users_autocomplete)
+    @app_commands.autocomplete(user4=_movebulk_users_autocomplete)
+    @app_commands.autocomplete(user5=_movebulk_users_autocomplete)
+    @app_commands.autocomplete(destination=_voice_channel_destination_for_bulk_autocomplete)
+    async def movebulk(
+        self, 
+        interaction: discord.Interaction, 
+        user1: str,
+        destination: str = None,
+        user2: typing.Optional[str] = None,
+        user3: typing.Optional[str] = None,
+        user4: typing.Optional[str] = None,
+        user5: typing.Optional[str] = None,
+        reason: typing.Optional[str] = None
+    ):
+        await interaction.response.defer(thinking=True, ephemeral=True)
+        
+        # Combine all user parameters
+        all_users = [u for u in [user1, user2, user3, user4, user5] if u]
+        combined = ", ".join(all_users)
+        
+        ids = self._parse_user_ids_from_string(combined)
+
+        # Inisialisasi daftar anggota yang valid untuk dipindahkan
+        valid_members = []
+         # Inisialisasi dictionary untuk melacak channel asal
+        original_channels = {}
+
+        # Memvalidasi dan Mengumpulkan anggota yang sedang di voice channel
+        for member_id in ids:
+            m = interaction.guild.get_member(member_id)
+            
+            # Cek apakah anggota ditemukan DAN sedang di voice channel
+            if m and m.voice and m.voice.channel:
+                valid_members.append(m)
+                # Simpan nama channel asal SEBELUM aksi pemindahan
+                original_channels[m.id] = (m.voice.channel.id, m.voice.channel.name)
+            elif m:
+                # Jika user valid tapi tidak di voice channel, catat sebagai skipped
+                original_channels[m.id] = (0, "ERROR: Tidak di Voice")
+
+        if not valid_members:
+            await interaction.followup.send("User tidak ditemukan atau tidak sedang di voice.", ephemeral=True)
+            return
+        
+        dest = interaction.guild.get_channel(int(destination))
+
+        if not isinstance(dest, discord.VoiceChannel):
+            await interaction.followup.send("Channel tujuan tidak valid.", ephemeral=True)
+            return
+        # ensure destination accessible by all selected members
+        for m in valid_members:
+            if not self._can_connect(dest, m):
+                await interaction.followup.send("Channel tidak dapat diakses oleh salah satu member yang dipilih.", ephemeral=True)
+                return
+            
+        results_for_logs = []
+        results_for_display = []
+        moved_count = 0
+        for m in valid_members:
+            source_id = original_channels.get(m.id, (0, ))[0]
+            source_name = original_channels.get(m.id, ("ERROR: Unknown", ))[1]
+            # Pengecekan tambahan: pastikan tidak pindah ke channel yang sama
+        try:
+            if m.voice.channel.id == dest.id:
+                results_for_logs.append(f"SKIP: {m.display_name} sudah berada di 🔊 {dest.name}")
+                results_for_display.append(f"SKIP: {m.display_name} sudah berada di <#{dest.id}>")
+
+            await m.move_to(dest, reason=reason)
+            # Catat hasil pemindahan: [Anggota] (Channel Asal -> Channel Tujuan)
+            moved_count += 1
+
+            results_for_logs.append(f"{m.display_name} dari 🔊 {source_name}")
+            results_for_display.append(f"{m.display_name} dari <#{source_id}>")
+        except Exception as e:
+            results_for_logs.append(f"{m.display_name} ({source_name}) -> Error: {e}")
+            results_for_display.append(f"{m.display_name} (<#{m.voice.channel.id}>) -> Error: {e}")
+            
+        await interaction.followup.send(
+            f"✅ {moved_count} user berhasil dipindahkan. Detail:\n\n" + "\n".join(results_for_logs),
+            ephemeral=True
+        )
+        embed = discord.Embed(
+            title="🚚 VOICE MOVE",
+            description=f"**{moved_count}** user telah dipindahkan ke **<#{dest.id}>**: \n\n" + "\n".join(results_for_display),
+            color=discord.Color.blue()
+        )
+        if reason:
+            embed.add_field(name="Oleh", value=interaction.user.mention, inline=True)
+            embed.add_field(name="Alasan", value=reason, inline=True)
+        else:
+            embed.add_field(name="\u200b", value=f"**Oleh:** {interaction.user.mention}",inline=True)
+
+        await interaction.channel.send(embed=embed)
+        await self.log_action(interaction, "Voice Bulk Move", f"Users: {combined}\nDestination: {dest.name}\nResults:\n\n" + "\n".join(results_for_logs) + f"\nBy: {interaction.user}\nReason: {reason or '—'}", color=discord.Color.blue())
+
+    @app_commands.command(name="movechannel", description="Pindahkan semua user di voice channel sekaligus")
+    @app_commands.describe(source="Channel asal", destination="Channel tujuan", reason="Alasan")
+    @app_commands.autocomplete(source=_voice_channel_source_autocomplete)
+    @app_commands.autocomplete(destination=_voice_channel_destination_for_source_autocomplete)
+    async def movechannel(self, interaction: discord.Interaction, source: str, destination: str, reason: typing.Optional[str] = None):
+        src = interaction.guild.get_channel(int(source))
+        dest = interaction.guild.get_channel(int(destination))
+        if not isinstance(src, discord.VoiceChannel) or len(src.members) == 0:
+            await interaction.response.send_message("Channel tidak valid atau tidak memiliki anggota.", ephemeral=True)
+            return
+        if not isinstance(dest, discord.VoiceChannel):
+            await interaction.response.send_message("Channel tujuan tidak valid.", ephemeral=True)
+            return
+        # ensure destination accessible by all members in source
+        for m in src.members:
+            if not self._can_connect(dest, m):
+                await interaction.response.send_message("Channel tujuan tidak dapat diakses oleh semua member di source.", ephemeral=True)
+                return
+        await interaction.response.defer(thinking=True, ephemeral=True)
+
+        results= []
+        moved_count = 0
+        for m in list(src.members):
+            try:
+                if m.voice.channel.id == dest.id:
+                    results.append(f"SKIP: {m.display_name} sudah berada di {dest.name}")
+                    continue
+                
+                moved_count += 1
+
+                await m.move_to(dest, reason=reason)
+                # Catat hasil pemindahan: [Anggota] (Channel Asal -> Channel Tujuan)
+                results(f"{m.display_name}")
+            except Exception as e:
+                results.append(f"❌ {m.display_name} ({src.name}) -> Error: {e}")
+   
+        await interaction.followup.send(
+            f"✅ {moved_count} user berhasil dipindahkan. Detail:\n\n" + "\n".join(results),
+            ephemeral=True
+        )
+        embed = discord.Embed(
+            title="🚚 VOICE MOVE",
+            description=f"**{moved_count}** user telah dipindahkan dari **<#{src.id}>** ke **<#{dest.id}>**: \n\n" + "\n".join(results),
+            color=discord.Color.blue()
+        )
+        if reason:
+            embed.add_field(name="Oleh", value=interaction.user.mention, inline=True)
+            embed.add_field(name="Alasan", value=reason, inline=True)
+        else:
+            embed.add_field(name="\u200b", value=f"**Oleh:** {interaction.user.mention}",inline=True)
+
+        await interaction.channel.send(embed=embed)
+        await self.log_action(interaction, "Voice Channel Move", f"Source: {src.name}\nDestination: {dest.name}\nResults:\n\n" + "\n".join(results) + f"\nBy: {interaction.user}\nReason: {reason or '—'}", color=discord.Color.blue())
+    @app_commands.command(name="dc", description="Disconnect user dari voice")
+    @app_commands.describe(user="Pilih user", reason="Alasan")
     @app_commands.autocomplete(user=_voice_member_autocomplete)
     async def dc(self, interaction: discord.Interaction, user: str, reason: typing.Optional[str] = None):
         ids = self._parse_user_ids_from_string(user)
         if not ids:
-            await interaction.response.send_message("User tidak valid.", ephemeral=False)
+            await interaction.response.send_message("User tidak valid.", ephemeral=True)
             return
         member = interaction.guild.get_member(ids[0])
         if not member or not member.voice or not member.voice.channel:
-            await interaction.response.send_message("Member tidak ditemukan atau tidak sedang di voice.", ephemeral=False)
+            await interaction.response.send_message("User tidak ditemukan atau tidak sedang di voice.", ephemeral=True)
             return
+        
+        original_channel_id = member.voice.channel.id
+
         await member.move_to(None, reason=reason)
-        await interaction.response.send_message(f"{member.mention} telah di-disconnect. Reason: {reason or '—'}", ephemeral=False)
+        await interaction.response.send_message(f"✅ Berhasil disconnect {member.mention}.", ephemeral=True)
+        embed = discord.Embed(
+            title="🔌 VOICE Disconnect",
+            description=f"**{member.mention}** telah di-disconnect dari <#{original_channel_id}>.",
+            color=discord.Color.red()
+        )
+        if reason:
+            embed.add_field(name="Oleh", value=interaction.user.mention, inline=True)
+            embed.add_field(name="Alasan", value=reason, inline=True)
+        else:
+            embed.add_field(name="\u200b", value=f"**Oleh:** {interaction.user.mention}",inline=True)
+
+        await interaction.channel.send(embed=embed)
         await self.log_action(interaction, "Voice Disconnect", f"Target: {member} ({member.id})\nBy: {interaction.user}\nReason: {reason or '—'}", color=discord.Color.red())
 
-    @app_commands.command(name="dcbulk", description="Disconnect beberapa anggota")
+    @app_commands.command(name="dcbulk", description="Disconnect beberapa user sekaligus")
     @app_commands.describe(
-        user1="Pilih user pertama (hanya yang sedang terhubung)",
+        user1="Pilih user pertama",
         user2="Pilih user kedua (opsional)",
         user3="Pilih user ketiga (opsional)",
         user4="Pilih user keempat (opsional)",
@@ -387,11 +712,11 @@ class VoiceModeration(commands.Cog):
         self, 
         interaction: discord.Interaction, 
         user1: str,
+        reason: typing.Optional[str] = None,
         user2: typing.Optional[str] = None,
         user3: typing.Optional[str] = None,
         user4: typing.Optional[str] = None,
-        user5: typing.Optional[str] = None,
-        reason: typing.Optional[str] = None
+        user5: typing.Optional[str] = None
     ):
         await interaction.response.defer(thinking=True)
         
@@ -401,6 +726,7 @@ class VoiceModeration(commands.Cog):
         
         ids = self._parse_user_ids_from_string(combined)
         results = []
+        disconnected_count = 0
         for uid in ids:
             member = interaction.guild.get_member(uid)
             if not member:
@@ -411,204 +737,69 @@ class VoiceModeration(commands.Cog):
                 continue
             try:
                 await member.move_to(None, reason=reason)
-                results.append(f"{member} -> disconnected")
+
+                disconnected_count += 1
+
+                results.append(f"{member}")
             except Exception as e:
                 results.append(f"{member} -> error: {e}")
-        await interaction.followup.send("Results:\n" + "\n".join(results), ephemeral=False)
-        await self.log_action(interaction, "Voice Bulk Disconnect", f"Users: {combined}\nResults:\n" + "\n".join(results) + f"\nBy: {interaction.user}\nReason: {reason or '—'}", color=discord.Color.red())
+        
+        await interaction.followup.send(
+            f"✅ {disconnected_count} user berhasil di-disconnect. Detail:\n\n" + "\n".join(results),
+            ephemeral=True
+        )
+        embed = discord.Embed(
+            title="🔌 VOICE DISCONNECT",
+            description=f"**{disconnected_count}** user telah di-disconnect: \n\n" + "\n".join(results),
+            color=discord.Color.red()
+        )
+        if reason:
+            embed.add_field(name="Oleh", value=interaction.user.mention, inline=True)
+            embed.add_field(name="Alasan", value=reason, inline=True)
+        else:
+            embed.add_field(name="\u200b", value=f"**Oleh:** {interaction.user.mention}",inline=True)
+
+        await interaction.channel.send(embed=embed)
+        await self.log_action(interaction, "Voice Bulk Disconnect", f"Users: {combined}\nResults:\n\n" + "\n".join(results) + f"\nBy: {interaction.user}\nReason: {reason or '—'}", color=discord.Color.red())
 
     @app_commands.command(name="dcchannel", description="Disconnect semua anggota dari voice channel yang dipilih")
-    @app_commands.describe(channel="Pilih source voice channel (hanya channel dengan user)", reason="Alasan")
+    @app_commands.describe(channel="Pilih channel", reason="Alasan")
     @app_commands.autocomplete(channel=_voice_channel_source_autocomplete)
     async def dcchannel(self, interaction: discord.Interaction, channel: str, reason: typing.Optional[str] = None):
         ch = interaction.guild.get_channel(int(channel))
         if not isinstance(ch, discord.VoiceChannel) or len(ch.members) == 0:
-            await interaction.response.send_message("Channel tidak valid atau tidak memiliki anggota.", ephemeral=False)
+            await interaction.response.send_message("Channel tidak valid atau tidak memiliki anggota.", ephemeral=True)
             return
-        await interaction.response.defer(thinking=True)
+        await interaction.response.defer(thinking=True, ephemeral=True)
         results = []
+        disconnected_count = 0
         for m in list(ch.members):
             try:
                 await m.move_to(None, reason=reason)
-                results.append(f"{m} -> disconnected")
+
+                disconnected_count += 1
+
+                results.append(f"{m}")
             except Exception as e:
                 results.append(f"{m} -> error: {e}")
-        await interaction.followup.send(f"Disconnected members from {ch.name}:\n" + "\n".join(results), ephemeral=False)
-        await self.log_action(interaction, "Voice Channel Disconnect", f"Channel: {ch.name} ({ch.id})\nResults:\n" + "\n".join(results) + f"\nBy: {interaction.user}\nReason: {reason or '—'}", color=discord.Color.red())
 
-    @app_commands.command(name="move", description="Pindahkan satu anggota ke channel tujuan")
-    @app_commands.describe(user="Pilih user (hanya yang sedang terhubung)", destination="Pilih destination (dapat diakses oleh user)", reason="Alasan")
-    @app_commands.autocomplete(user=_voice_member_autocomplete)
-    @app_commands.autocomplete(destination=_voice_channel_destination_for_target_autocomplete)
-    async def move(self, interaction: discord.Interaction, user: str, destination: str, reason: typing.Optional[str] = None):
-        ids = self._parse_user_ids_from_string(user)
-        if not ids:
-            await interaction.response.send_message("User tidak valid.", ephemeral=False)
-            return
-        member = interaction.guild.get_member(ids[0])
-        dest = interaction.guild.get_channel(int(destination))
-        if not member or not member.voice or not member.voice.channel:
-            await interaction.response.send_message("Member tidak ditemukan atau tidak sedang di voice.", ephemeral=False)
-            return
-        if not isinstance(dest, discord.VoiceChannel) or not self._can_connect(dest, member):
-            await interaction.response.send_message("Destination tidak valid atau tidak dapat diakses oleh member.", ephemeral=False)
-            return
-        if member.voice.channel.id == dest.id:
-            await interaction.response.send_message("Member sudah berada di channel tujuan.", ephemeral=False)
-            return
-        await member.move_to(dest, reason=reason)
-        await interaction.response.send_message(f"{member.mention} telah dipindahkan ke {dest.name}. Reason: {reason or '—'}", ephemeral=False)
-        await self.log_action(interaction, "Voice Move", f"Target: {member} -> {dest.name}\nBy: {interaction.user}\nReason: {reason or '—'}", color=discord.Color.blue())
+        await interaction.followup.send(
+            f"✅ berhasil disconnect {disconnected_count}. Detail:\n\n" + "\n".join(results),
+            ephemeral=True
+        )
+        embed = discord.Embed(
+            title="🔌 VOICE DISCONNECT",
+            description=f"**{disconnected_count}** user telah di-disconnect: \n\n" + "\n".join(results),
+            color=discord.Color.red()
+        )
+        if reason:
+            embed.add_field(name="Oleh", value=interaction.user.mention, inline=True)
+            embed.add_field(name="Alasan", value=reason, inline=True)
+        else:
+            embed.add_field(name="\u200b", value=f"**Oleh:** {interaction.user.mention}",inline=True)
 
-    @app_commands.command(name="movebulk", description="Pindahkan beberapa anggota")
-    @app_commands.describe(
-        user1="Pilih user pertama (hanya yang sedang terhubung)",
-        user2="Pilih user kedua (opsional)",
-        user3="Pilih user ketiga (opsional)",
-        user4="Pilih user keempat (opsional)",
-        user5="Pilih user kelima (opsional)",
-        destination="Destination voice channel (accessible by all selected users)",
-        reason="Alasan"
-    )
-    @app_commands.autocomplete(user1=_movebulk_users_autocomplete)
-    @app_commands.autocomplete(user2=_movebulk_users_autocomplete)
-    @app_commands.autocomplete(user3=_movebulk_users_autocomplete)
-    @app_commands.autocomplete(user4=_movebulk_users_autocomplete)
-    @app_commands.autocomplete(user5=_movebulk_users_autocomplete)
-    @app_commands.autocomplete(destination=_voice_channel_destination_for_bulk_autocomplete)
-    async def movebulk(
-        self, 
-        interaction: discord.Interaction, 
-        user1: str,
-        user2: typing.Optional[str] = None,
-        user3: typing.Optional[str] = None,
-        user4: typing.Optional[str] = None,
-        user5: typing.Optional[str] = None,
-        destination: str = None,
-        reason: typing.Optional[str] = None
-    ):
-        await interaction.response.defer(thinking=True)
-        
-        # Combine all user parameters
-        all_users = [u for u in [user1, user2, user3, user4, user5] if u]
-        combined = ", ".join(all_users)
-        
-        ids = self._parse_user_ids_from_string(combined)
-        members = [interaction.guild.get_member(i) for i in ids if interaction.guild.get_member(i)]
-        if not members:
-            await interaction.followup.send("Tidak ada member yang valid.", ephemeral=False)
-            return
-        dest = interaction.guild.get_channel(int(destination))
-        if not isinstance(dest, discord.VoiceChannel):
-            await interaction.followup.send("Destination tidak valid.", ephemeral=False)
-            return
-        # ensure destination accessible by all selected members
-        for m in members:
-            if not self._can_connect(dest, m):
-                await interaction.followup.send("Destination tidak dapat diakses oleh salah satu member yang dipilih.", ephemeral=False)
-                return
-        results = []
-        for m in members:
-            try:
-                await m.move_to(dest, reason=reason)
-                results.append(f"{m} -> moved")
-            except Exception as e:
-                results.append(f"{m} -> error: {e}")
-        await interaction.followup.send("Results:\n" + "\n".join(results), ephemeral=False)
-        await self.log_action(interaction, "Voice Bulk Move", f"Users: {combined}\nDestination: {dest.name}\nResults:\n" + "\n".join(results) + f"\nBy: {interaction.user}\nReason: {reason or '—'}", color=discord.Color.blue())
-
-    @app_commands.command(name="movechannel", description="Pindahkan semua anggota dari source ke destination")
-    @app_commands.describe(source="Source voice channel (hanya channel dengan user)", destination="Destination voice channel (user dapat akses oleh semua member source)", reason="Alasan")
-    @app_commands.autocomplete(source=_voice_channel_source_autocomplete)
-    @app_commands.autocomplete(destination=_voice_channel_destination_for_source_autocomplete)
-    async def movechannel(self, interaction: discord.Interaction, source: str, destination: str, reason: typing.Optional[str] = None):
-        src = interaction.guild.get_channel(int(source))
-        dest = interaction.guild.get_channel(int(destination))
-        if not isinstance(src, discord.VoiceChannel) or len(src.members) == 0:
-            await interaction.response.send_message("Source tidak valid atau tidak memiliki anggota.", ephemeral=False)
-            return
-        if not isinstance(dest, discord.VoiceChannel):
-            await interaction.response.send_message("Destination tidak valid.", ephemeral=False)
-            return
-        # ensure destination accessible by all members in source
-        for m in src.members:
-            if not self._can_connect(dest, m):
-                await interaction.response.send_message("Destination tidak dapat diakses oleh semua member di source.", ephemeral=False)
-                return
-        await interaction.response.defer(thinking=True)
-        results = []
-        for m in list(src.members):
-            try:
-                await m.move_to(dest, reason=reason)
-                results.append(f"{m} -> moved")
-            except Exception as e:
-                results.append(f"{m} -> error: {e}")
-        await interaction.followup.send(f"Moved members from {src.name} to {dest.name}:\n" + "\n".join(results), ephemeral=False)
-        await self.log_action(interaction, "Voice Channel Move", f"Source: {src.name}\nDestination: {dest.name}\nResults:\n" + "\n".join(results) + f"\nBy: {interaction.user}\nReason: {reason or '—'}", color=discord.Color.blue())
-
-    @app_commands.command(name="mute", description="Server voice mute a member")
-    @app_commands.describe(user="Pilih user (hanya yang sedang terhubung dan belum mute)", reason="Alasan")
-    @app_commands.autocomplete(user=_voice_member_autocomplete)
-    async def mute(self, interaction: discord.Interaction, user: str, reason: typing.Optional[str] = None):
-        ids = self._parse_user_ids_from_string(user)
-        if not ids:
-            await interaction.response.send_message("User tidak valid untuk mute.", ephemeral=False)
-            return
-        member = interaction.guild.get_member(ids[0])
-        if not member or not member.voice or not member.voice.channel or getattr(member.voice, "mute", False):
-            await interaction.response.send_message("Member tidak valid untuk mute.", ephemeral=False)
-            return
-        await member.edit(mute=True, reason=reason)
-        await interaction.response.send_message(f"{member.mention} telah di-server-mute. Reason: {reason or '—'}", ephemeral=False)
-        await self.log_action(interaction, "Server Mute", f"Target: {member} ({member.id})\nBy: {interaction.user}\nReason: {reason or '—'}", color=discord.Color.orange())
-
-    @app_commands.command(name="unmute", description="Remove server voice mute")
-    @app_commands.describe(user="Pilih user (hanya yang sedang terhubung dan sedang mute)", reason="Alasan")
-    @app_commands.autocomplete(user=_voice_member_autocomplete)
-    async def unmute(self, interaction: discord.Interaction, user: str, reason: typing.Optional[str] = None):
-        ids = self._parse_user_ids_from_string(user)
-        if not ids:
-            await interaction.response.send_message("User tidak valid untuk unmute.", ephemeral=False)
-            return
-        member = interaction.guild.get_member(ids[0])
-        if not member or not member.voice or not member.voice.channel or not getattr(member.voice, "mute", False):
-            await interaction.response.send_message("Member tidak valid untuk unmute.", ephemeral=False)
-            return
-        await member.edit(mute=False, reason=reason)
-        await interaction.response.send_message(f"{member.mention} telah di-unmute. Reason: {reason or '—'}", ephemeral=False)
-        await self.log_action(interaction, "Server Unmute", f"Target: {member} ({member.id})\nBy: {interaction.user}\nReason: {reason or '—'}", color=discord.Color.green())
-
-    @app_commands.command(name="deafen", description="Server deafen a member")
-    @app_commands.describe(user="Pilih user (hanya yang sedang terhubung dan belum deafen)", reason="Alasan")
-    @app_commands.autocomplete(user=_voice_member_autocomplete)
-    async def deafen(self, interaction: discord.Interaction, user: str, reason: typing.Optional[str] = None):
-        ids = self._parse_user_ids_from_string(user)
-        if not ids:
-            await interaction.response.send_message("User tidak valid untuk deafen.", ephemeral=False)
-            return
-        member = interaction.guild.get_member(ids[0])
-        if not member or not member.voice or not member.voice.channel or getattr(member.voice, "deaf", False):
-            await interaction.response.send_message("Member tidak valid untuk deafen.", ephemeral=False)
-            return
-        await member.edit(deafen=True, reason=reason)
-        await interaction.response.send_message(f"{member.mention} telah di-deafen. Reason: {reason or '—'}", ephemeral=False)
-        await self.log_action(interaction, "Server Deafen", f"Target: {member} ({member.id})\nBy: {interaction.user}\nReason: {reason or '—'}", color=discord.Color.orange())
-
-    @app_commands.command(name="undeafen", description="Remove server deafen")
-    @app_commands.describe(user="Pilih user (hanya yang sedang terhubung dan sedang deafen)", reason="Alasan")
-    @app_commands.autocomplete(user=_voice_member_autocomplete)
-    async def undeafen(self, interaction: discord.Interaction, user: str, reason: typing.Optional[str] = None):
-        ids = self._parse_user_ids_from_string(user)
-        if not ids:
-            await interaction.response.send_message("User tidak valid untuk undeafen.", ephemeral=False)
-            return
-        member = interaction.guild.get_member(ids[0])
-        if not member or not member.voice or not member.voice.channel or not getattr(member.voice, "deaf", False):
-            await interaction.response.send_message("Member tidak valid untuk undeafen.", ephemeral=False)
-            return
-        await member.edit(deafen=False, reason=reason)
-        await interaction.response.send_message(f"{member.mention} telah di-undeafen. Reason: {reason or '—'}", ephemeral=False)
-        await self.log_action(interaction, "Server Undeafen", f"Target: {member} ({member.id})\nBy: {interaction.user}\nReason: {reason or '—'}", color=discord.Color.green())
+        await interaction.channel.send(embed=embed)
+        await self.log_action(interaction, "Voice Bulk Disconnect", f"Channel: 🔊 {ch.name}\nResults:\n\n" + "\n".join(results) + f"\nBy: {interaction.user}\nReason: {reason or '—'}", color=discord.Color.red())
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(VoiceModeration(bot))
