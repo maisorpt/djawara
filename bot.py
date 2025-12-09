@@ -1,13 +1,12 @@
 import os
 import asyncio
-from dotenv import load_dotenv
 import discord
 from discord import app_commands
 from discord.ext import commands
+from dotenv import load_dotenv
 
 load_dotenv()
 TOKEN = os.getenv("TOKEN")
-LOG_CHANNEL_ID = int(os.getenv("LOG_CHANNEL_ID") or 0)
 
 if not TOKEN:
     raise SystemExit("ERROR: TOKEN tidak ditemukan. Isi TOKEN di file .env pada root project Anda.")
