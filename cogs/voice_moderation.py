@@ -1,13 +1,12 @@
 import discord
 from discord import app_commands
 from discord.ext import commands
-from .log_config import get_log_channel_id
 import typing
 import datetime
-import pytz
+import os
 import re
 
-JAKARTA_TZ = pytz.timezone('Asia/Jakarta')
+LOG_CHANNEL_ID = int(os.getenv("LOG_CHANNEL_ID", "0"))
 
 class ActiveVoiceChannel(app_commands.Transform):
     @classmethod
@@ -23,19 +22,8 @@ class VoiceModeration(commands.Cog):
         self.bot = bot
 
     async def log_action(self, interaction: discord.Interaction, title: str, description: str, color=discord.Color.orange()):
-        log_channel_id = get_log_channel_id(interaction.guild_id)
-        
-        if not log_channel_id:
-             return
-             
-        log_ch = self.bot.get_channel(log_channel_id)
-        
-        if not log_ch:
-            return
-        
-        now_wib = datetime.datetime.now(JAKARTA_TZ)
-
-        embed = discord.Embed(title=title, description=description, color=color, timestamp=now_wib)
+        log_ch = self.bot.get_channel(LOG_CHANNEL_ID)
+        embed = discord.Embed(title=title, description=description, color=color, timestamp=datetime.datetime.utcnow())
         embed.set_author(name=str(interaction.user), icon_url=getattr(interaction.user, "avatar.url", None) if hasattr(interaction.user, "avatar") else None)
         embed.set_footer(text=f"Guild: {interaction.guild.id if interaction.guild else 'DM'}")
         if log_ch:
@@ -74,6 +62,7 @@ class VoiceModeration(commands.Cog):
         return None
 
     def _member_label(self, m: discord.Member) -> str:
+        # label: display_name — username#discriminator (no id)
         disc = getattr(m, "discriminator", None)
         uname = f"{m.name}#{disc}" if disc is not None else m.name
         return f"{m.display_name} — {uname}"
@@ -82,6 +71,7 @@ class VoiceModeration(commands.Cog):
     _ID_RE = re.compile(r"^\s*(\d+)\s*$")
 
     def _parse_user_ids_from_string(self, s: str) -> typing.List[int]:
+        # accepts comma separated mentions or numeric ids or mixed
         ids: typing.List[int] = []
         for part in [p.strip() for p in s.split(",") if p.strip()]:
             m = self._MENTION_RE.match(part)
@@ -111,8 +101,10 @@ class VoiceModeration(commands.Cog):
         for m in guild.members:
             if not (m.voice and m.voice.channel):
                 continue
+            # Only show members in channels accessible by invoker
             if not self._can_connect(m.voice.channel, invoker):
                 continue
+            # filter by command state
             if cmd == "mute" and getattr(m.voice, "mute", False):
                 continue
             if cmd == "unmute" and not getattr(m.voice, "mute", False):
@@ -128,17 +120,21 @@ class VoiceModeration(commands.Cog):
         return choices[:25]
 
     async def _dcbulk_users_autocomplete(self, interaction: discord.Interaction, current: str) -> typing.List[app_commands.Choice]:
+        # autocomplete untuk user1, user2, user3, dst
+        # exclude users yang sudah ditambahkan di parameter sebelumnya
         guild = interaction.guild
         if not guild:
             return []
         invoker = interaction.user
         
+        # parse users dari parameter sebelumnya
         selected_ids = []
         data = getattr(interaction, "data", None)
         if data:
             opts = data.get("options") or []
             for o in opts:
                 name = o.get("name")
+                # user1, user2, user3, ... parameter
                 if name and name.startswith("user"):
                     val = o.get("value")
                     if val:
@@ -149,8 +145,10 @@ class VoiceModeration(commands.Cog):
         for m in guild.members:
             if not (m.voice and m.voice.channel):
                 continue
+            # Only show members in channels accessible by invoker
             if not self._can_connect(m.voice.channel, invoker):
                 continue
+            # Exclude already selected users
             if m.id in selected_ids:
                 continue
             label = self._member_label(m)
@@ -160,17 +158,21 @@ class VoiceModeration(commands.Cog):
         return choices[:25]
 
     async def _movebulk_users_autocomplete(self, interaction: discord.Interaction, current: str) -> typing.List[app_commands.Choice]:
+        # autocomplete untuk user1, user2, user3, dst
+        # exclude users yang sudah ditambahkan di parameter sebelumnya
         guild = interaction.guild
         if not guild:
             return []
         invoker = interaction.user
         
+        # parse users dari parameter sebelumnya
         selected_ids = []
         data = getattr(interaction, "data", None)
         if data:
             opts = data.get("options") or []
             for o in opts:
                 name = o.get("name")
+                # user1, user2, user3, ... parameter
                 if name and name.startswith("user"):
                     val = o.get("value")
                     if val:
@@ -181,8 +183,10 @@ class VoiceModeration(commands.Cog):
         for m in guild.members:
             if not (m.voice and m.voice.channel):
                 continue
+            # Only show members in channels accessible by invoker
             if not self._can_connect(m.voice.channel, invoker):
                 continue
+            # Exclude already selected users
             if m.id in selected_ids:
                 continue
             label = self._member_label(m)
@@ -193,22 +197,29 @@ class VoiceModeration(commands.Cog):
     
     async def _voice_channel_source_autocomplete(self, interaction: discord.Interaction, current: str) -> typing.List[app_commands.Choice]:
         guild = interaction.guild
+        # Keluar jika interaksi tidak terjadi di guild
         if not guild:
             return []
 
+        # Dapatkan anggota yang memanggil perintah (invoker)
         invoker = interaction.user 
         
         choices = []
         
+        # 1. Perulangan melalui semua voice channels
         for ch in guild.voice_channels:
             
+            # 2. Periksa apakah invoker memiliki izin untuk melihat (VIEW_CHANNEL) VC ini
+            #    dan terhubung (CONNECT) ke VC ini.
             permissions = ch.permissions_for(invoker)
             if not permissions.view_channel or not permissions.connect:
-                continue
+                continue  # Abaikan jika invoker tidak dapat melihat atau terhubung
 
+            # 3. Periksa apakah VC memiliki user (Seperti yang sudah ada di kode Anda)
             if len(ch.members) == 0:
                 continue
                 
+            # Jika semua pemeriksaan lolos:
             label = f"{ch.name} ({len(ch.members)} user)"
             
             if not current or current.lower() in label.lower():
@@ -217,6 +228,7 @@ class VoiceModeration(commands.Cog):
         return choices[:25]
 
     async def _voice_channel_destination_for_target_autocomplete(self, interaction: discord.Interaction, current: str) -> typing.List[app_commands.Choice]:
+        # destination: accessible by target member AND invoker
         guild = interaction.guild
         if not guild:
             return []
@@ -232,8 +244,10 @@ class VoiceModeration(commands.Cog):
             return []
         choices = []
         for ch in guild.voice_channels:
+            # exclude target's current channel
             if target_member.voice and target_member.voice.channel and ch.id == target_member.voice.channel.id:
                 continue
+            # require destination accessible by both target_member AND invoker
             if not self._can_connect(ch, target_member):
                 continue
             if not self._can_connect(ch, invoker):
@@ -244,30 +258,35 @@ class VoiceModeration(commands.Cog):
         return choices[:25]
 
     async def _voice_channel_destination_for_bulk_autocomplete(self, interaction: discord.Interaction, current: str) -> typing.List[app_commands.Choice]:
+        # destination for movebulk: channels accessible by ALL selected members AND invoker
         guild = interaction.guild
         if not guild:
             return []
         invoker = interaction.user
         
-
+        # --- PERBAIKAN DI SINI (Identifikasi User) ---
         all_user_values = []
-        for i in range(1, 6):
+        for i in range(1, 6): # user1 hingga user5
             user_val = getattr(interaction.namespace, f'user{i}', None)
             if user_val:
                 all_user_values.append(user_val)
         
         combined_user_mentions = ", ".join(all_user_values)
         ids = self._parse_user_ids_from_string(combined_user_mentions)
+        # --- AKHIR PERBAIKAN (Identifikasi User) ---
         
+        # 1. TEMUKAN VC ASAL DAN SIMPAN DALAM SET
         source_vcs = set()
         
         if not ids:
+            # Jika belum ada user yang dipilih, hanya tampilkan VC yang dapat diakses invoker
             members = []
         else:
             members = [guild.get_member(i) for i in ids if guild.get_member(i)]
             if not members:
                 return []
             
+            # Tambahkan ID VC asal dari setiap member ke set source_vcs
             for m in members:
                 if m.voice and m.voice.channel:
                     source_vcs.add(m.voice.channel.id)
@@ -275,15 +294,19 @@ class VoiceModeration(commands.Cog):
         choices = []
         for ch in guild.voice_channels:
             
+            # 2. LOGIKA EKSKLUSI: Lewati VC asal yang sudah teridentifikasi
             if ch.id in source_vcs:
                 continue
             
+            # Check for permissions for all selected members
             ok = True
             for m in members:
+                # Menggunakan _can_connect
                 if not self._can_connect(ch, m):
                     ok = False
                     break
             
+            # Also check invoker can access
             if not self._can_connect(ch, invoker):
                 ok = False
                 
@@ -297,6 +320,7 @@ class VoiceModeration(commands.Cog):
         return choices[:25]
 
     async def _voice_channel_destination_for_source_autocomplete(self, interaction: discord.Interaction, current: str) -> typing.List[app_commands.Choice]:
+        # destination options for movechannel: accessible by all members in source AND invoker
         guild = interaction.guild
         if not guild:
             return []
@@ -318,6 +342,7 @@ class VoiceModeration(commands.Cog):
                 if not ch.permissions_for(m).view_channel or not ch.permissions_for(m).connect:
                     ok = False
                     break
+            # Also check invoker can access
             if not self._can_connect(ch, invoker):
                 ok = False
             if not ok:
@@ -506,21 +531,28 @@ class VoiceModeration(commands.Cog):
     ):
         await interaction.response.defer(thinking=True, ephemeral=True)
         
+        # Combine all user parameters
         all_users = [u for u in [user1, user2, user3, user4, user5] if u]
         combined = ", ".join(all_users)
         
         ids = self._parse_user_ids_from_string(combined)
 
+        # Inisialisasi daftar anggota yang valid untuk dipindahkan
         valid_members = []
+         # Inisialisasi dictionary untuk melacak channel asal
         original_channels = {}
 
+        # Memvalidasi dan Mengumpulkan anggota yang sedang di voice channel
         for member_id in ids:
             m = interaction.guild.get_member(member_id)
             
+            # Cek apakah anggota ditemukan DAN sedang di voice channel
             if m and m.voice and m.voice.channel:
                 valid_members.append(m)
+                # Simpan nama channel asal SEBELUM aksi pemindahan
                 original_channels[m.id] = (m.voice.channel.id, m.voice.channel.name)
             elif m:
+                # Jika user valid tapi tidak di voice channel, catat sebagai skipped
                 original_channels[m.id] = (0, "ERROR: Tidak di Voice")
 
         if not valid_members:
@@ -532,6 +564,7 @@ class VoiceModeration(commands.Cog):
         if not isinstance(dest, discord.VoiceChannel):
             await interaction.followup.send("Channel tujuan tidak valid.", ephemeral=True)
             return
+        # ensure destination accessible by all selected members
         for m in valid_members:
             if not self._can_connect(dest, m):
                 await interaction.followup.send("Channel tidak dapat diakses oleh salah satu member yang dipilih.", ephemeral=True)
@@ -543,12 +576,14 @@ class VoiceModeration(commands.Cog):
         for m in valid_members:
             source_id = original_channels.get(m.id, (0, ))[0]
             source_name = original_channels.get(m.id, ("ERROR: Unknown", ))[1]
+            # Pengecekan tambahan: pastikan tidak pindah ke channel yang sama
         try:
             if m.voice.channel.id == dest.id:
                 results_for_logs.append(f"SKIP: {m.display_name} sudah berada di 🔊 {dest.name}")
                 results_for_display.append(f"SKIP: {m.display_name} sudah berada di <#{dest.id}>")
 
             await m.move_to(dest, reason=reason)
+            # Catat hasil pemindahan: [Anggota] (Channel Asal -> Channel Tujuan)
             moved_count += 1
 
             results_for_logs.append(f"{m.display_name} dari 🔊 {source_name}")
@@ -588,6 +623,7 @@ class VoiceModeration(commands.Cog):
         if not isinstance(dest, discord.VoiceChannel):
             await interaction.response.send_message("Channel tujuan tidak valid.", ephemeral=True)
             return
+        # ensure destination accessible by all members in source
         for m in src.members:
             if not self._can_connect(dest, m):
                 await interaction.response.send_message("Channel tujuan tidak dapat diakses oleh semua member di source.", ephemeral=True)
@@ -605,6 +641,7 @@ class VoiceModeration(commands.Cog):
                 moved_count += 1
 
                 await m.move_to(dest, reason=reason)
+                # Catat hasil pemindahan: [Anggota] (Channel Asal -> Channel Tujuan)
                 results(f"{m.display_name}")
             except Exception as e:
                 results.append(f"❌ {m.display_name} ({src.name}) -> Error: {e}")
@@ -683,6 +720,7 @@ class VoiceModeration(commands.Cog):
     ):
         await interaction.response.defer(thinking=True)
         
+        # Combine all user parameters
         all_users = [u for u in [user1, user2, user3, user4, user5] if u]
         combined = ", ".join(all_users)
         
