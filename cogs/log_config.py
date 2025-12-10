@@ -44,6 +44,7 @@ class LogConfig(commands.Cog):
     @app_commands.command(name="setlogchannel", description="Set channel log")
     @app_commands.default_permissions(administrator=True) 
     async def set_log_channel(self, interaction: discord.Interaction, channel: discord.TextChannel):
+        
         guild_id = str(interaction.guild_id)
         config = load_config()
         
@@ -54,7 +55,28 @@ class LogConfig(commands.Cog):
             f"✅ Channel log moderasi berhasil diatur ke {channel.mention}.",
             ephemeral=False
         )
-        
+    
+    # --- COMMAND: /resetlogchannel ---
+    @app_commands.command(name="resetlogchannel", description="Reset log channel")
+    @app_commands.default_permissions(administrator=True)
+    async def reset_log_channel(self, interaction: discord.Interaction):
+        guild_id_str = str(interaction.guild_id)
+        config = load_config()
+
+        if guild_id_str in config:
+            del config[guild_id_str]
+            save_config(config)
+
+            await interaction.response.send_message(
+                "❌ Pengaturan channel log moderasi untuk server ini telah **dihapus**.",
+                ephemeral=False
+            )
+        else:
+            await interaction.response.send_message(
+                "⚠️ Channel log belum pernah diatur atau sudah direset.",
+                ephemeral=True
+            )
+
     # --- BACKGROUND TASK: Auto Delete Log ---
     @tasks.loop(hours=24)
     async def log_cleanup_task(self):
